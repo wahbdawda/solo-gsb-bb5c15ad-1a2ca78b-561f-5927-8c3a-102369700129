@@ -63,6 +63,13 @@ docker compose up --build
   - 「带入编码表单」把整段缺口区间填入右侧编码表单（等同拖选效果），提交仍走原有**冲突预览**流程；
   - 编码筛选或标注变化后缺口列表同步刷新；所选编码并集覆盖全文时给出**「已全覆盖」**空状态。
   - 对应 `GET /api/documents/{id}/gaps?codes=1,2`（`codes` 为逗号分隔，缺省统计全部编码）。
+- **编码流转视图**：正文区顶部切换到「编码流转」标签，按当前文档展示相邻编码状态之间的**有向转移**——
+  - 计算口径：后端把所选标注的**全部起止边界切成原子区间**，以**覆盖编码的集合**表示每个原子区间的状态；**跳过没有编码覆盖的原子区间**（它同时把前后状态隔开），再**合并首尾相接且状态相同的相邻区间**，最后按文档顺序统计相邻状态的转移次数；
+  - 转移列表按**次数降序**排列，每条给出**来源状态 → 目标状态**（彩色编码胶囊）、次数与间距范围（两区间之间的无编码字符数，首尾相接为 0）；
+  - 顶部支持**最小次数**与**最大间距**本地筛选（最大间距先过滤实例、再套次数门槛）；展开条目查看每次转移的**原文上下文**（来源、中间缺口、目标及前后文）；
+  - 点击实例自动切回正文、滚动并**闪烁定位来源起点到目标终点的整段跨度**；
+  - 编码筛选或标注变化后列表同步刷新；**零标注**（没有任何状态区间）、**只有单一状态**（无转移）与筛选无结果时分别给出明确空状态。
+  - 对应 `GET /api/documents/{id}/transitions?codes=1,2`（`codes` 为逗号分隔，缺省统计全部编码）。
 - **JSON 导出**：顶栏「导出 JSON」下载当前文档的完整编码结果（含每条标注的区间与原文切片），对应 `GET /api/documents/{id}/export`。
 - **持久化**：所有文档、编码本、标注均存于 SQLite，刷新页面后原样恢复；首次启动自动载入一份示例访谈与编码。
 
@@ -92,6 +99,7 @@ npm run dev   # http://localhost:5173
 | GET | `/api/documents/{id}/speakers` | 说话人分析：解析「说话人：」发言段落，返回每位说话人（含未标注说话人）的文本长度、各编码覆盖字符数与覆盖率及片段摘录；`?codes=1,2` 按编码筛选（逗号分隔，缺省为全部编码） |
 | GET | `/api/code-distribution` | 跨文档编码分布对比：全部文档按所选编码汇总标注字符数、段数与占文档长度比例（文档按标题稳定排序，含行内差异百分比与首个片段），单一快照返回缺失编码与空文档提示；`?codes=1,2` 按编码筛选（逗号分隔，缺省为全部编码） |
 | GET | `/api/documents/{id}/gaps` | 覆盖缺口：合并所选编码重叠/相邻的标注区间后求全文补集，返回未覆盖区间的起止位置、长度与原文摘录（保留文首/文尾/零标注场景）及覆盖率；`?codes=1,2` 按编码筛选（逗号分隔，缺省为全部编码） |
+| GET | `/api/documents/{id}/transitions` | 编码流转：把所选标注的起止边界切成原子区间，以覆盖编码集合表示状态，跳过无编码区间并合并相邻同状态区间，返回状态区间序列与相邻状态的有向转移聚合计数（含每次转移的来源、目标区间、中间距离、整段跨度原文与前后文）；`?codes=1,2` 按编码筛选（逗号分隔，缺省为全部编码） |
 | GET | `/api/documents/{id}/export` | 导出 JSON（附件下载） |
 | GET / POST | `/api/codes` | 编码本列表 / 新建（重名返回 409） |
 | PUT / DELETE | `/api/codes/{id}` | 重命名、改色 / 删除（级联删除标注） |
@@ -114,11 +122,12 @@ npm run dev   # http://localhost:5173
 │       ├── speakers.py       # 说话人发言段落解析与覆盖统计纯函数
 │       ├── distribution.py   # 跨文档编码分布对比统计纯函数
 │       ├── gaps.py           # 覆盖缺口（区间并集补集）纯函数
+│       ├── transitions.py    # 编码流转（原子状态区间与有向转移）纯函数
 │       └── db.py             # SQLite 连接、建表、示例数据
 └── frontend/
     ├── Dockerfile          # 多阶段构建：Vite build → nginx
     ├── nginx.conf          # 静态托管 + /api 反向代理
     └── src/
         ├── App.jsx         # 状态编排与冲突决策流
-        └── components/     # TextView / CodingForm / SearchBatchPanel / ConflictDialog / Sidebar / CooccurrenceView / SpeakerView / DistributionView / GapView
+        └── components/     # TextView / CodingForm / SearchBatchPanel / ConflictDialog / Sidebar / CooccurrenceView / SpeakerView / DistributionView / GapView / TransitionView
 ```

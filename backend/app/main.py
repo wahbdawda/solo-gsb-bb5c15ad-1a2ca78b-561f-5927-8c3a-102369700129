@@ -23,6 +23,7 @@ from .db import get_db, init_db, list_codings, next_color
 from .distribution import compute_distribution
 from .gaps import compute_gaps
 from .speakers import compute_speaker_stats
+from .transitions import compute_transitions
 
 Resolution = Literal["keep", "merge", "split"]
 
@@ -657,6 +658,59 @@ def coverage_gaps(
         "covered_char_count": covered,
         "coverage_rate": round(covered / len(content), 4) if content else 0.0,
         "gaps": gaps,
+    }
+
+
+# ---------- 编码流转 ----------
+
+@app.get("/api/documents/{document_id}/transitions")
+def code_transitions(
+    document_id: int,
+    codes: str | None = Query(default=None),
+) -> dict:
+    """按当前文档返回相邻编码状态区间的有向转移统计。
+
+    把所选标注的全部起止边界切成原子区间，以覆盖编码的集合表示区间
+    状态；跳过没有编码覆盖的原子区间（它同时隔开前后状态），再合并
+    首尾相接且状态相同的相邻区间，最后按文档顺序统计相邻状态之间的
+    有向转移次数，每次转移回传来源、目标区间、中间无编码缺口与整段
+    跨度（原文摘录）。
+
+    查询参数 `codes` 为逗号分隔的编码 id（?codes=1,2）：缺省统计编码本
+    全部编码；空串（?codes=）表示不统计任何编码，状态与转移均为空。
+    """
+    with get_db() as conn:
+        doc = get_document_or_404(conn, document_id)
+        all_codes = {
+            r["id"]: {"id": r["id"], "name": r["name"], "color": r["color"]}
+            for r in conn.execute("SELECT id, name, color FROM codes ORDER BY id")
+        }
+        if codes is None:
+            member_ids = sorted(all_codes)
+        else:
+            try:
+                member_ids = sorted(
+                    {int(x) for x in codes.split(",") if x.strip()}
+                )
+            except ValueError:
+                raise HTTPException(
+                    status_code=422,
+                    detail="codes 参数格式错误：应为逗号分隔的编码 id",
+                )
+            unknown = [cid for cid in member_ids if cid not in all_codes]
+            if unknown:
+                raise HTTPException(
+                    status_code=404, detail=f"编码不存在: {unknown}"
+                )
+        codings = list_codings(conn, document_id)
+
+    content = doc["content"]
+    result = compute_transitions(content, codings, member_ids)
+    return {
+        "document_id": document_id,
+        "document_length": len(content),
+        "codes": [all_codes[cid] for cid in member_ids],
+        **result,
     }
 
 
