@@ -8,6 +8,7 @@ import CooccurrenceView from './components/CooccurrenceView'
 import SpeakerView from './components/SpeakerView'
 import DistributionView from './components/DistributionView'
 import GapView from './components/GapView'
+import TransitionView from './components/TransitionView'
 import SearchBatchPanel from './components/SearchBatchPanel'
 
 export default function App() {
@@ -23,7 +24,7 @@ export default function App() {
   const [error, setError] = useState(null)
   const [showNewDoc, setShowNewDoc] = useState(false)
   const [newDoc, setNewDoc] = useState({ title: '', content: '' })
-  const [view, setView] = useState('text') // text | cooccurrence | speakers | distribution | gaps
+  const [view, setView] = useState('text') // text | cooccurrence | speakers | distribution | gaps | transitions
   const [coocStats, setCoocStats] = useState(null)
   const [coocLoading, setCoocLoading] = useState(false)
   const [coocError, setCoocError] = useState(null)
@@ -36,6 +37,9 @@ export default function App() {
   const [gapStats, setGapStats] = useState(null)
   const [gapLoading, setGapLoading] = useState(false)
   const [gapError, setGapError] = useState(null)
+  const [transStats, setTransStats] = useState(null)
+  const [transLoading, setTransLoading] = useState(false)
+  const [transError, setTransError] = useState(null)
   const [gapMinLen, setGapMinLen] = useState(1) // 最小缺口长度筛选
   const [gapCursor, setGapCursor] = useState(-1) // 上一处/下一处导航位置
   const [pendingLocate, setPendingLocate] = useState(null)
@@ -188,6 +192,28 @@ export default function App() {
   useEffect(() => {
     loadGaps()
   }, [loadGaps])
+
+  // ---------- 编码流转（随当前文档与编码筛选同步） ----------
+
+  const loadTransitions = useCallback(async () => {
+    if (docId == null) return
+    // 与说话人分析一致：编码全部取消勾选时传空数组，无状态区间与转移
+    setTransLoading(true)
+    setTransError(null)
+    try {
+      setTransStats(await api.getTransitions(docId, filteredCodeIds))
+    } catch (e) {
+      setTransStats(null)
+      setTransError(e.message || String(e))
+    } finally {
+      setTransLoading(false)
+    }
+    // docData 变化（新建/编辑/删除标注后 refresh）也要重新统计
+  }, [docId, filteredCodeIds, docData])
+
+  useEffect(() => {
+    loadTransitions()
+  }, [loadTransitions])
 
   // 最小缺口长度筛选在前端进行，避免每次调整都重新请求
   const visibleGaps = useMemo(
@@ -512,6 +538,14 @@ export default function App() {
             >
               覆盖缺口
             </button>
+            <button
+              role="tab"
+              aria-selected={view === 'transitions'}
+              className={view === 'transitions' ? 'active' : ''}
+              onClick={() => setView('transitions')}
+            >
+              编码流转
+            </button>
           </div>
           {view === 'text' ? (
             <TextView
@@ -550,6 +584,13 @@ export default function App() {
               onNavigate={handleGapNavigate}
               onLocate={handleGapLocate}
               onBringToForm={handleGapToForm}
+            />
+          ) : view === 'transitions' ? (
+            <TransitionView
+              stats={transStats}
+              loading={transLoading}
+              error={transError}
+              onLocateInstance={handleLocateSegment}
             />
           ) : (
             <DistributionView

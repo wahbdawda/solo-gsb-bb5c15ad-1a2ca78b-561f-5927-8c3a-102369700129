@@ -44,6 +44,11 @@ export const api = {
     if (codeIds === null) return request(`/documents/${id}/gaps`)
     return request(`/documents/${id}/gaps?codes=${codeIds.join(',')}`)
   },
+  // 编码流转；codeIds：null=全部编码；[]=不统计任何编码（无状态区间与转移）
+  getTransitions: (id, codeIds = null) => {
+    if (codeIds === null) return request(`/documents/${id}/transitions`)
+    return request(`/documents/${id}/transitions?codes=${codeIds.join(',')}`)
+  },
 
   listCodes: () => request('/codes'),
   createCode: (name, color) =>
